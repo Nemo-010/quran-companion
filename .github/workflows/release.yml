@@ -58,6 +58,7 @@ jobs:
     environment:
       name: Linux - AppImage
       url: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/Quran_Companion-${{ needs.prepare.outputs.version }}-x86_64.AppImage
+    container: ghcr.io/pkgforge-dev/archlinux:latest
     env:
       APP_VER: "${{ needs.prepare.outputs.version }}"
     steps:
@@ -67,83 +68,22 @@ jobs:
           ref: ${{ github.ref_name }}
           submodules: true
 
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v3
-        with:
-          cache: true
-          host: linux
-          target: desktop
-          arch: linux_gcc_64
-          version: "${{ env.QT_INSTALL_VERSION }}"
-          modules: "${{ env.QT_INSTALL_MODULES }}"
+      - name: Prepare Anylinux packaging tools
+        uses: pkgforge-dev/anylinux-setup-action@ba7321e11074f9e387a0634e653d09b115d576cd # v6
 
-      - name: Install tools
-        run: |-
-          sudo apt update -y && sudo apt install wget fuse libxcb-cursor0 appstream appstream-util ninja-build -y
-          wget https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage
-          wget https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
-          chmod +x linuxdeployqt-continuous-x86_64.AppImage
-          chmod +x appimagetool-x86_64.AppImage
-
-      - name: Prepare AppDir
-        run: >-
-          mkdir -p QuranCompanion.AppDir/usr/{bin,share/{applications,metainfo,icons/hicolor/256x256/apps}}
-
-          cp
-          ${{github.workspace}}/dist/xdg/io.github._0xzer0x.qurancompanion.desktop
-          QuranCompanion.AppDir/
-
-          cp ${{github.workspace}}/dist/xdg/logo256.png
-          QuranCompanion.AppDir/io.github._0xzer0x.qurancompanion.png
-
-          cp
-          ${{github.workspace}}/dist/xdg/io.github._0xzer0x.qurancompanion.desktop
-          QuranCompanion.AppDir/usr/share/applications/
-
-          cp ${{github.workspace}}/dist/xdg/logo256.png
-          QuranCompanion.AppDir/usr/share/icons/hicolor/256x256/apps/io.github._0xzer0x.qurancompanion.png
-
-          cp ${{github.workspace}}/dist/xdg/io.github._0xzer0x.qurancompanion.metainfo.xml
-          QuranCompanion.AppDir/usr/share/metainfo/io.github._0xzer0x.qurancompanion.appdata.xml
-
-          echo -e "[Paths]\nPlugins = ../plugins\nLibraries = ../lib\nImports =
-          ../qml\nQml2Imports = ../qml" > QuranCompanion.AppDir/usr/bin/qt.conf
-
-      - name: Configure
-        run: >-
-          cmake -B ${{github.workspace}}/build
-          -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
-
-      - name: Build
-        run: "cmake --build ${{github.workspace}}/build"
-
-      - name: Install
-        run: >-
-          cmake --install ${{github.workspace}}/build --prefix
-          QuranCompanion.AppDir/usr
-
-      - name: Run linuxdeployqt
-        run: >-
-          find "${QT_PLUGIN_PATH}/imageformats" -name 'libqtiff.so' -type f -delete
-
-          find "${QT_PLUGIN_PATH}/sqldrivers" -not -name 'libqsqlite.so' -type f -delete
-
-          ${{github.workspace}}/linuxdeployqt-continuous-x86_64.AppImage
-          QuranCompanion.AppDir/usr/bin/quran-companion
-          -unsupported-allow-new-glibc -qmake=$(which qmake) -no-translations
-          -extra-plugins=sqldrivers,iconengines,imageformats,multimedia,networkinformation,platforms,platformthemes,wayland-decoration-client,wayland-graphics-integration-client,wayland-shell-integration,xcbglintegrations,egldeviceintegrations
-          -verbose=1
+      - name: Install dependencies and build
+        run: /bin/sh ./dist/appimage/get-dependencies.sh
 
       - name: Make AppImage
-        run: >-
-          ${{github.workspace}}/appimagetool-x86_64.AppImage -n QuranCompanion.AppDir
-          Quran_Companion-${{env.APP_VER}}-x86_64.AppImage
+        run: /bin/sh ./dist/appimage/make-appimage.sh
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: appimage
-          path: "Quran_Companion-${{env.APP_VER}}-x86_64.AppImage"
+          path: |
+            dist/*.AppImage
+            dist/*.AppImage.zsync
           retention-days: 7
 
   build-dmg:
